@@ -125,9 +125,12 @@ protected:
   };
 
   // Parameters for some special cases, e.g. hydraulics powered robots
-  /// Run he controller in open-loop, i.e., read hardware states only when starting controller.
-  /// This is useful when robot is not exactly following the commanded trajectory.
+  // Run the controller in open-loop, i.e., read hardware states only when starting controller.
+  // This is useful when robot is not exactly following the commanded trajectory.
   bool open_loop_control_ = false;
+  // Optional jerk-limited trajectory smoothing
+  bool ruckig_jerk_smoothing_ = false;
+
   trajectory_msgs::msg::JointTrajectoryPoint last_commanded_state_;
   /// Allow integration in goal trajectories to accept goals without position or velocity specified
   bool allow_integration_in_goal_trajectories_ = false;
@@ -158,7 +161,7 @@ protected:
   /// reserved storage for result of the command when closed loop pid adapter is used
   std::vector<double> tmp_command_;
 
-  // TODO(karsten1987): eventually activate and deactivate subscriber directly when its supported
+  // TODO(karsten1987): eventually activate and deactivate subscriber directly when it's supported
   bool subscriber_is_active_ = false;
   rclcpp::Subscription<trajectory_msgs::msg::JointTrajectory>::SharedPtr joint_command_subscriber_ =
     nullptr;
