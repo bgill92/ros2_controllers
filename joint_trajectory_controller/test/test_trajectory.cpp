@@ -28,6 +28,7 @@
 #include "std_msgs/msg/header.hpp"
 #include "trajectory_msgs/msg/joint_trajectory.hpp"
 #include "trajectory_msgs/msg/joint_trajectory_point.hpp"
+#include "joint_limits/joint_limits.hpp"
 
 using namespace joint_trajectory_controller::interpolation_methods;  // NOLINT
 using namespace std::chrono_literals;
@@ -46,11 +47,12 @@ TEST(TestTrajectory, initialize_trajectory)
     empty_msg->header.stamp.nanosec = 2;
     const rclcpp::Time empty_time = empty_msg->header.stamp;
     auto traj = joint_trajectory_controller::Trajectory(empty_msg);
-    rclcpp::Duration period = rclcpp::Duration::from_nanoseconds(1e7);
+    const rclcpp::Duration period = rclcpp::Duration::from_nanoseconds(1e7);
+    const std::vector<joint_limits::JointLimits> joint_limits;
 
     trajectory_msgs::msg::JointTrajectoryPoint output_point;
     joint_trajectory_controller::TrajectoryPointConstIter start, end;
-    traj.sample(rclcpp::Clock().now(), DEFAULT_INTERPOLATION, output_point, start, end);
+    traj.sample(rclcpp::Clock().now(), DEFAULT_INTERPOLATION, output_point, start, end, period, joint_limits);
 
     EXPECT_EQ(traj.end(), start);
     EXPECT_EQ(traj.end(), end);
@@ -63,11 +65,12 @@ TEST(TestTrajectory, initialize_trajectory)
     const auto now = rclcpp::Clock().now();
     auto traj = joint_trajectory_controller::Trajectory(empty_msg);
     const auto traj_starttime = traj.time_from_start();
-    rclcpp::Duration period = rclcpp::Duration::from_nanoseconds(1e7);
+    const rclcpp::Duration period = rclcpp::Duration::from_nanoseconds(1e7);
+    const std::vector<joint_limits::JointLimits> joint_limits;    
 
     trajectory_msgs::msg::JointTrajectoryPoint output_point;
     joint_trajectory_controller::TrajectoryPointConstIter start, end;
-    traj.sample(rclcpp::Clock().now(), DEFAULT_INTERPOLATION, output_point, start, end);
+    traj.sample(rclcpp::Clock().now(), DEFAULT_INTERPOLATION, output_point, start, end, period, joint_limits);
 
     EXPECT_EQ(traj.end(), start);
     EXPECT_EQ(traj.end(), end);
@@ -107,13 +110,14 @@ TEST(TestTrajectory, sample_trajectory_positions)
   trajectory_msgs::msg::JointTrajectoryPoint output_point;
   joint_trajectory_controller::TrajectoryPointConstIter start, end;
   rclcpp::Duration period = rclcpp::Duration::from_nanoseconds(1e7);
+  const std::vector<joint_limits::JointLimits> joint_limits;
 
   double duration_first_seg = 1.0;
   double velocity = (p1.positions[0] - point_before_msg.positions[0]) / duration_first_seg;
 
   // sample at trajectory starting time
   {
-    traj.sample(time_now, DEFAULT_INTERPOLATION, output_point, start, end);
+    traj.sample(time_now, DEFAULT_INTERPOLATION, output_point, start, end, period, joint_limits);
     ASSERT_EQ(traj.begin(), start);
     ASSERT_EQ(traj.begin(), end);
     EXPECT_NEAR(point_before_msg.positions[0], output_point.positions[0], EPS);
@@ -125,7 +129,7 @@ TEST(TestTrajectory, sample_trajectory_positions)
   {
     bool result = traj.sample(
       time_now - rclcpp::Duration::from_seconds(0.5), DEFAULT_INTERPOLATION, output_point, start,
-      end);
+      end, period, joint_limits);
     ASSERT_EQ(result, false);
   }
 
@@ -133,7 +137,7 @@ TEST(TestTrajectory, sample_trajectory_positions)
   {
     traj.sample(
       time_now + rclcpp::Duration::from_seconds(0.5), DEFAULT_INTERPOLATION, output_point, start,
-      end);
+      end, period, joint_limits);
     ASSERT_EQ(traj.begin(), start);
     ASSERT_EQ(traj.begin(), end);
     double half_current_to_p1 = (point_before_msg.positions[0] + p1.positions[0]) * 0.5;
@@ -146,7 +150,7 @@ TEST(TestTrajectory, sample_trajectory_positions)
   {
     traj.sample(
       time_now + rclcpp::Duration::from_seconds(1.0), DEFAULT_INTERPOLATION, output_point, start,
-      end);
+      end, period, joint_limits);
     ASSERT_EQ(traj.begin(), start);
     ASSERT_EQ((++traj.begin()), end);
     EXPECT_NEAR(p1.positions[0], output_point.positions[0], EPS);
@@ -158,7 +162,7 @@ TEST(TestTrajectory, sample_trajectory_positions)
   {
     traj.sample(
       time_now + rclcpp::Duration::from_seconds(1.5), DEFAULT_INTERPOLATION, output_point, start,
-      end);
+      end, period, joint_limits);
     ASSERT_EQ(traj.begin(), start);
     ASSERT_EQ((++traj.begin()), end);
     double half_p1_to_p2 = (p1.positions[0] + p2.positions[0]) * 0.5;
@@ -169,7 +173,7 @@ TEST(TestTrajectory, sample_trajectory_positions)
   {
     traj.sample(
       time_now + rclcpp::Duration::from_seconds(2.5), DEFAULT_INTERPOLATION, output_point, start,
-      end);
+      end, period, joint_limits);
     double half_p2_to_p3 = (p2.positions[0] + p3.positions[0]) * 0.5;
     EXPECT_NEAR(half_p2_to_p3, output_point.positions[0], EPS);
   }
@@ -178,7 +182,7 @@ TEST(TestTrajectory, sample_trajectory_positions)
   {
     traj.sample(
       time_now + rclcpp::Duration::from_seconds(3.0), DEFAULT_INTERPOLATION, output_point, start,
-      end);
+      end, period, joint_limits);
     EXPECT_NEAR(p3.positions[0], output_point.positions[0], EPS);
   }
 
@@ -186,7 +190,7 @@ TEST(TestTrajectory, sample_trajectory_positions)
   {
     traj.sample(
       time_now + rclcpp::Duration::from_seconds(3.125), DEFAULT_INTERPOLATION, output_point,
-      start, end);
+      start, end, period, joint_limits);
     ASSERT_EQ((--traj.end()), start);
     ASSERT_EQ(traj.end(), end);
     EXPECT_NEAR(p3.positions[0], output_point.positions[0], EPS);
@@ -213,6 +217,7 @@ TEST(TestTrajectory, interpolation_pos_vel)
   auto traj = joint_trajectory_controller::Trajectory();
   rclcpp::Time time_now(0);
   rclcpp::Duration period = rclcpp::Duration::from_nanoseconds(1e7);
+  const std::vector<joint_limits::JointLimits> joint_limits;
   const bool do_ruckig_smoothing = false;
 
   trajectory_msgs::msg::JointTrajectoryPoint output_point;
@@ -221,7 +226,7 @@ TEST(TestTrajectory, interpolation_pos_vel)
   {
     traj.interpolate_between_points(
       time_now + start_state.time_from_start, start_state, time_now + end_state.time_from_start,
-      end_state, time_now + start_state.time_from_start, do_ruckig_smoothing, output_point);
+      end_state, time_now + start_state.time_from_start, do_ruckig_smoothing, output_point, period, joint_limits);
     EXPECT_NEAR(start_state.positions[0], output_point.positions[0], EPS);
     EXPECT_NEAR(start_state.velocities[0], output_point.velocities[0], EPS);
     EXPECT_NEAR(0.0, output_point.accelerations[0], EPS);
@@ -232,7 +237,7 @@ TEST(TestTrajectory, interpolation_pos_vel)
     auto t = rclcpp::Duration::from_seconds(std::sqrt(2.0));
     traj.interpolate_between_points(
       time_now + start_state.time_from_start, start_state, time_now + end_state.time_from_start,
-      end_state, time_now + start_state.time_from_start + t, do_ruckig_smoothing, output_point);
+      end_state, time_now + start_state.time_from_start + t, do_ruckig_smoothing, output_point, period, joint_limits);
     EXPECT_NEAR(0.0, output_point.positions[0], EPS);
     EXPECT_NEAR(4.0, output_point.velocities[0], EPS);
     EXPECT_NEAR(6.0 * std::sqrt(2.0), output_point.accelerations[0], EPS);
@@ -242,7 +247,7 @@ TEST(TestTrajectory, interpolation_pos_vel)
   {
     traj.interpolate_between_points(
       time_now + start_state.time_from_start, start_state, time_now + end_state.time_from_start,
-      end_state, time_now + end_state.time_from_start, do_ruckig_smoothing, output_point);
+      end_state, time_now + end_state.time_from_start, do_ruckig_smoothing, output_point, period, joint_limits);
     EXPECT_NEAR(end_state.positions[0], output_point.positions[0], EPS);
     EXPECT_NEAR(end_state.velocities[0], output_point.velocities[0], EPS);
     EXPECT_NEAR(12.0, output_point.accelerations[0], EPS);
@@ -275,6 +280,7 @@ TEST(TestTrajectory, interpolation_pos_vel_accel)
   rclcpp::Time time_now(0);
   auto traj = joint_trajectory_controller::Trajectory(time_now, start_state, std::move(traj_data));
   rclcpp::Duration period = rclcpp::Duration::from_nanoseconds(1e7);
+  const std::vector<joint_limits::JointLimits> joint_limits;
   bool do_ruckig_smoothing = false;
 
   trajectory_msgs::msg::JointTrajectoryPoint output_point;
@@ -283,7 +289,7 @@ TEST(TestTrajectory, interpolation_pos_vel_accel)
   {
     traj.interpolate_between_points(
       time_now + start_state.time_from_start, start_state, time_now + end_state.time_from_start,
-      end_state, time_now + start_state.time_from_start, do_ruckig_smoothing, output_point);
+      end_state, time_now + start_state.time_from_start, do_ruckig_smoothing, output_point, period, joint_limits);
     EXPECT_NEAR(start_state.positions[0], output_point.positions[0], EPS);
     EXPECT_NEAR(start_state.velocities[0], output_point.velocities[0], EPS);
     EXPECT_NEAR(start_state.accelerations[0], output_point.accelerations[0], EPS);
@@ -294,7 +300,7 @@ TEST(TestTrajectory, interpolation_pos_vel_accel)
     auto t = rclcpp::Duration::from_seconds(1.0);
     traj.interpolate_between_points(
       time_now + start_state.time_from_start, start_state, time_now + end_state.time_from_start,
-      end_state, time_now + start_state.time_from_start + t, do_ruckig_smoothing, output_point);
+      end_state, time_now + start_state.time_from_start + t, do_ruckig_smoothing, output_point, period, joint_limits);
     EXPECT_NEAR(0.0, output_point.positions[0], EPS);
     EXPECT_NEAR(-6.0, output_point.velocities[0], EPS);
     EXPECT_NEAR(10.0, output_point.accelerations[0], EPS);
@@ -304,7 +310,7 @@ TEST(TestTrajectory, interpolation_pos_vel_accel)
   {
     traj.interpolate_between_points(
       time_now + start_state.time_from_start, start_state, time_now + end_state.time_from_start,
-      end_state, time_now + end_state.time_from_start, do_ruckig_smoothing, output_point);
+      end_state, time_now + end_state.time_from_start, do_ruckig_smoothing, output_point, period, joint_limits);
     EXPECT_NEAR(end_state.positions[0], output_point.positions[0], EPS);
     EXPECT_NEAR(end_state.velocities[0], output_point.velocities[0], EPS);
     EXPECT_NEAR(end_state.accelerations[0], output_point.accelerations[0], EPS);
@@ -317,7 +323,7 @@ TEST(TestTrajectory, interpolation_pos_vel_accel)
   {
     traj.interpolate_between_points(
       time_now + start_state.time_from_start, start_state, time_now + end_state.time_from_start,
-      end_state, time_now + start_state.time_from_start, do_ruckig_smoothing, output_point);
+      end_state, time_now + start_state.time_from_start, do_ruckig_smoothing, output_point, period, joint_limits);
     EXPECT_NEAR(start_state.positions[0], output_point.positions[0], EPS);
     EXPECT_NEAR(start_state.velocities[0], output_point.velocities[0], EPS);
     EXPECT_NEAR(start_state.accelerations[0], output_point.accelerations[0], EPS);
@@ -328,7 +334,7 @@ TEST(TestTrajectory, interpolation_pos_vel_accel)
     auto t = rclcpp::Duration::from_seconds(1.0);
     traj.interpolate_between_points(
       time_now + start_state.time_from_start, start_state, time_now + end_state.time_from_start,
-      end_state, time_now + start_state.time_from_start + t, do_ruckig_smoothing, output_point);
+      end_state, time_now + start_state.time_from_start + t, do_ruckig_smoothing, output_point, period, joint_limits);
     EXPECT_NEAR(0.0, output_point.positions[0], EPS);
     EXPECT_NEAR(-6.0, output_point.velocities[0], EPS);
     EXPECT_NEAR(10.0, output_point.accelerations[0], EPS);
@@ -338,7 +344,7 @@ TEST(TestTrajectory, interpolation_pos_vel_accel)
   {
     traj.interpolate_between_points(
       time_now + start_state.time_from_start, start_state, time_now + end_state.time_from_start,
-      end_state, time_now + end_state.time_from_start, do_ruckig_smoothing, output_point);
+      end_state, time_now + end_state.time_from_start, do_ruckig_smoothing, output_point, period, joint_limits);
     EXPECT_NEAR(end_state.positions[0], output_point.positions[0], EPS);
     EXPECT_NEAR(end_state.velocities[0], output_point.velocities[0], EPS);
     EXPECT_NEAR(end_state.accelerations[0], output_point.accelerations[0], EPS);
@@ -378,6 +384,9 @@ TEST(TestTrajectory, sample_trajectory_velocity_with_interpolation)
   point_before_msg.positions.push_back(0.0);
   point_before_msg.velocities.push_back(0.0);
 
+  rclcpp::Duration period = rclcpp::Duration::from_nanoseconds(1e7);
+  const std::vector<joint_limits::JointLimits> joint_limits;
+
   // set current state before trajectory msg was sent
   const rclcpp::Time time_now = rclcpp::Clock().now();
   auto traj = joint_trajectory_controller::Trajectory(time_now, point_before_msg, full_msg);
@@ -387,7 +396,7 @@ TEST(TestTrajectory, sample_trajectory_velocity_with_interpolation)
 
   // sample at trajectory starting time
   {
-    traj.sample(time_now, DEFAULT_INTERPOLATION, expected_state, start, end);
+    traj.sample(time_now, DEFAULT_INTERPOLATION, expected_state, start, end, period, joint_limits);
     EXPECT_EQ(traj.begin(), start);
     EXPECT_EQ(traj.begin(), end);
     EXPECT_NEAR(point_before_msg.positions[0], expected_state.positions[0], EPS);
@@ -399,7 +408,7 @@ TEST(TestTrajectory, sample_trajectory_velocity_with_interpolation)
   {
     bool result = traj.sample(
       time_now - rclcpp::Duration::from_seconds(0.5), DEFAULT_INTERPOLATION, expected_state, start,
-      end);
+      end, period, joint_limits);
     EXPECT_EQ(result, false);
   }
 
@@ -407,7 +416,7 @@ TEST(TestTrajectory, sample_trajectory_velocity_with_interpolation)
   {
     traj.sample(
       time_now + rclcpp::Duration::from_seconds(0.5), DEFAULT_INTERPOLATION, expected_state, start,
-      end);
+      end, period, joint_limits);
     EXPECT_EQ(traj.begin(), start);
     EXPECT_EQ(traj.begin(), end);
     double half_current_to_p1 =
@@ -427,7 +436,7 @@ TEST(TestTrajectory, sample_trajectory_velocity_with_interpolation)
   {
     traj.sample(
       time_now + rclcpp::Duration::from_seconds(1.0), DEFAULT_INTERPOLATION, expected_state, start,
-      end);
+      end, period, joint_limits);
     EXPECT_EQ(traj.begin(), start);
     EXPECT_EQ((++traj.begin()), end);
     EXPECT_NEAR(position_first_seg, expected_state.positions[0], EPS);
@@ -441,7 +450,7 @@ TEST(TestTrajectory, sample_trajectory_velocity_with_interpolation)
   {
     traj.sample(
       time_now + rclcpp::Duration::from_seconds(1.5), DEFAULT_INTERPOLATION, expected_state, start,
-      end);
+      end, period, joint_limits);
     EXPECT_EQ(traj.begin(), start);
     EXPECT_EQ((++traj.begin()), end);
     double half_p1_to_p2 =
@@ -461,7 +470,7 @@ TEST(TestTrajectory, sample_trajectory_velocity_with_interpolation)
   {
     traj.sample(
       time_now + rclcpp::Duration::from_seconds(2), DEFAULT_INTERPOLATION, expected_state, start,
-      end);
+      end, period, joint_limits);
     EXPECT_EQ((++traj.begin()), start);
     EXPECT_EQ((--traj.end()), end);
     EXPECT_NEAR(position_second_seg, expected_state.positions[0], EPS);
@@ -475,7 +484,7 @@ TEST(TestTrajectory, sample_trajectory_velocity_with_interpolation)
   {
     traj.sample(
       time_now + rclcpp::Duration::from_seconds(2.5), DEFAULT_INTERPOLATION, expected_state, start,
-      end);
+      end, period, joint_limits);
     EXPECT_EQ((++traj.begin()), start);
     EXPECT_EQ((--traj.end()), end);
     double half_p2_to_p3 =
@@ -495,7 +504,7 @@ TEST(TestTrajectory, sample_trajectory_velocity_with_interpolation)
   {
     traj.sample(
       time_now + rclcpp::Duration::from_seconds(3.0), DEFAULT_INTERPOLATION, expected_state, start,
-      end);
+      end, period, joint_limits);
     EXPECT_EQ((--traj.end()), start);
     EXPECT_EQ(traj.end(), end);
     EXPECT_NEAR(position_third_seg, expected_state.positions[0], EPS);
@@ -508,7 +517,7 @@ TEST(TestTrajectory, sample_trajectory_velocity_with_interpolation)
   {
     traj.sample(
       time_now + rclcpp::Duration::from_seconds(3.125), DEFAULT_INTERPOLATION, expected_state,
-      start, end);
+      start, end, period, joint_limits);
     EXPECT_EQ((--traj.end()), start);
     EXPECT_EQ(traj.end(), end);
     EXPECT_NEAR(position_third_seg, expected_state.positions[0], EPS);
@@ -551,6 +560,9 @@ TEST(TestTrajectory, sample_trajectory_velocity_with_interpolation_strange_witho
   point_before_msg.time_from_start = rclcpp::Duration::from_seconds(0.0);
   point_before_msg.positions.push_back(0.0);
 
+  rclcpp::Duration period = rclcpp::Duration::from_nanoseconds(1e7);
+  const std::vector<joint_limits::JointLimits> joint_limits;
+
   // set current state before trajectory msg was sent
   const rclcpp::Time time_now = rclcpp::Clock().now();
   auto traj = joint_trajectory_controller::Trajectory(time_now, point_before_msg, full_msg);
@@ -560,7 +572,7 @@ TEST(TestTrajectory, sample_trajectory_velocity_with_interpolation_strange_witho
 
   // sample at trajectory starting time
   {
-    traj.sample(time_now, DEFAULT_INTERPOLATION, expected_state, start, end);
+    traj.sample(time_now, DEFAULT_INTERPOLATION, expected_state, start, end, period, joint_limits);
     EXPECT_EQ(traj.begin(), start);
     EXPECT_EQ(traj.begin(), end);
     EXPECT_NEAR(point_before_msg.positions[0], expected_state.positions[0], EPS);
@@ -573,7 +585,7 @@ TEST(TestTrajectory, sample_trajectory_velocity_with_interpolation_strange_witho
   {
     bool result = traj.sample(
       time_now - rclcpp::Duration::from_seconds(0.5), DEFAULT_INTERPOLATION, expected_state, start,
-      end);
+      end, period, joint_limits);
     EXPECT_EQ(result, false);
   }
 
@@ -581,7 +593,7 @@ TEST(TestTrajectory, sample_trajectory_velocity_with_interpolation_strange_witho
   {
     traj.sample(
       time_now + rclcpp::Duration::from_seconds(0.5), DEFAULT_INTERPOLATION, expected_state, start,
-      end);
+      end, period, joint_limits);
     EXPECT_EQ(traj.begin(), start);
     EXPECT_EQ(traj.begin(), end);
     //     double half_current_to_p1 = point_before_msg.positions[0] +
@@ -601,7 +613,7 @@ TEST(TestTrajectory, sample_trajectory_velocity_with_interpolation_strange_witho
   {
     traj.sample(
       time_now + rclcpp::Duration::from_seconds(1.0), DEFAULT_INTERPOLATION, expected_state, start,
-      end);
+      end, period, joint_limits);
     EXPECT_EQ(traj.begin(), start);
     EXPECT_EQ((++traj.begin()), end);
     EXPECT_NEAR(position_first_seg, expected_state.positions[0], EPS);
@@ -643,6 +655,9 @@ TEST(TestTrajectory, sample_trajectory_acceleration_with_interpolation)
   point_before_msg.positions.push_back(0.0);
   point_before_msg.velocities.push_back(0.0);
 
+  rclcpp::Duration period = rclcpp::Duration::from_nanoseconds(1e7);
+  const std::vector<joint_limits::JointLimits> joint_limits;
+
   // set current state before trajectory msg was sent
   const rclcpp::Time time_now = rclcpp::Clock().now();
   auto traj = joint_trajectory_controller::Trajectory(time_now, point_before_msg, full_msg);
@@ -652,7 +667,7 @@ TEST(TestTrajectory, sample_trajectory_acceleration_with_interpolation)
 
   // sample at trajectory starting time
   {
-    traj.sample(time_now, DEFAULT_INTERPOLATION, expected_state, start, end);
+    traj.sample(time_now, DEFAULT_INTERPOLATION, expected_state, start, end, period, joint_limits);
     EXPECT_EQ(traj.begin(), start);
     EXPECT_EQ(traj.begin(), end);
     EXPECT_NEAR(point_before_msg.positions[0], expected_state.positions[0], EPS);
@@ -665,7 +680,7 @@ TEST(TestTrajectory, sample_trajectory_acceleration_with_interpolation)
   {
     bool result = traj.sample(
       time_now - rclcpp::Duration::from_seconds(0.5), DEFAULT_INTERPOLATION, expected_state, start,
-      end);
+      end, period, joint_limits);
     EXPECT_EQ(result, false);
   }
 
@@ -679,7 +694,7 @@ TEST(TestTrajectory, sample_trajectory_acceleration_with_interpolation)
   {
     traj.sample(
       time_now + rclcpp::Duration::from_seconds(1.0), DEFAULT_INTERPOLATION, expected_state, start,
-      end);
+      end, period, joint_limits);
     EXPECT_EQ(traj.begin(), start);
     EXPECT_EQ((++traj.begin()), end);
     EXPECT_NEAR(position_first_seg, expected_state.positions[0], EPS);
@@ -695,7 +710,7 @@ TEST(TestTrajectory, sample_trajectory_acceleration_with_interpolation)
   {
     traj.sample(
       time_now + rclcpp::Duration::from_seconds(2), DEFAULT_INTERPOLATION, expected_state, start,
-      end);
+      end, period, joint_limits);
     EXPECT_EQ((++traj.begin()), start);
     EXPECT_EQ((--traj.end()), end);
     EXPECT_NEAR(position_second_seg, expected_state.positions[0], EPS);
@@ -711,7 +726,7 @@ TEST(TestTrajectory, sample_trajectory_acceleration_with_interpolation)
   {
     traj.sample(
       time_now + rclcpp::Duration::from_seconds(3.0), DEFAULT_INTERPOLATION, expected_state, start,
-      end);
+      end, period, joint_limits);
     EXPECT_EQ((--traj.end()), start);
     EXPECT_EQ(traj.end(), end);
     EXPECT_NEAR(position_third_seg, expected_state.positions[0], EPS);
@@ -723,7 +738,7 @@ TEST(TestTrajectory, sample_trajectory_acceleration_with_interpolation)
   {
     traj.sample(
       time_now + rclcpp::Duration::from_seconds(3.125), DEFAULT_INTERPOLATION, expected_state,
-      start, end);
+      start, end, period, joint_limits);
     EXPECT_EQ((--traj.end()), start);
     EXPECT_EQ(traj.end(), end);
     EXPECT_NEAR(position_third_seg, expected_state.positions[0], EPS);
@@ -760,6 +775,9 @@ TEST(TestTrajectory, skip_interpolation)
     point_before_msg.time_from_start = rclcpp::Duration::from_seconds(0.0);
     point_before_msg.positions.push_back(0.0);
 
+    rclcpp::Duration period = rclcpp::Duration::from_nanoseconds(1e7);
+    const std::vector<joint_limits::JointLimits> joint_limits;
+
     // set current state before trajectory msg was sent
     const rclcpp::Time time_now = rclcpp::Clock().now();
     auto traj = joint_trajectory_controller::Trajectory(time_now, point_before_msg, full_msg);
@@ -769,7 +787,7 @@ TEST(TestTrajectory, skip_interpolation)
 
     // sample at trajectory starting time
     {
-      traj.sample(time_now, no_interpolation, expected_state, start, end);
+      traj.sample(time_now, no_interpolation, expected_state, start, end, period, joint_limits);
       ASSERT_EQ(traj.begin(), start);
       ASSERT_EQ(traj.begin(), end);
       EXPECT_NEAR(point_before_msg.positions[0], expected_state.positions[0], EPS);
@@ -784,7 +802,7 @@ TEST(TestTrajectory, skip_interpolation)
     {
       bool result = traj.sample(
         time_now - rclcpp::Duration::from_seconds(0.5), no_interpolation, expected_state, start,
-        end);
+        end, period, joint_limits);
       ASSERT_EQ(result, false);
     }
 
@@ -792,7 +810,7 @@ TEST(TestTrajectory, skip_interpolation)
     {
       traj.sample(
         time_now + rclcpp::Duration::from_seconds(0.5), no_interpolation, expected_state, start,
-        end);
+        end, period, joint_limits);
       ASSERT_EQ(traj.begin(), start);
       ASSERT_EQ(traj.begin(), end);
       // For passthrough, this should just return the first waypoint
@@ -808,7 +826,7 @@ TEST(TestTrajectory, skip_interpolation)
     {
       traj.sample(
         time_now + rclcpp::Duration::from_seconds(1.0), no_interpolation, expected_state, start,
-        end);
+        end, period, joint_limits);
       ASSERT_EQ(traj.begin(), start);
       ASSERT_EQ((++traj.begin()), end);
       EXPECT_NEAR(p2.positions[0], expected_state.positions[0], EPS);
@@ -823,7 +841,7 @@ TEST(TestTrajectory, skip_interpolation)
     {
       traj.sample(
         time_now + rclcpp::Duration::from_seconds(1.5), no_interpolation, expected_state, start,
-        end);
+        end, period, joint_limits);
       ASSERT_EQ(traj.begin(), start);
       ASSERT_EQ((++traj.begin()), end);
       EXPECT_NEAR(p2.positions[0], expected_state.positions[0], EPS);
@@ -833,7 +851,7 @@ TEST(TestTrajectory, skip_interpolation)
     {
       traj.sample(
         time_now + rclcpp::Duration::from_seconds(2.5), no_interpolation, expected_state, start,
-        end);
+        end, period, joint_limits);
       EXPECT_NEAR(p3.positions[0], expected_state.positions[0], EPS);
     }
 
@@ -841,7 +859,7 @@ TEST(TestTrajectory, skip_interpolation)
     {
       traj.sample(
         time_now + rclcpp::Duration::from_seconds(3.0), no_interpolation, expected_state, start,
-        end);
+        end, period, joint_limits);
       EXPECT_NEAR(p3.positions[0], expected_state.positions[0], EPS);
     }
 
@@ -849,7 +867,7 @@ TEST(TestTrajectory, skip_interpolation)
     {
       traj.sample(
         time_now + rclcpp::Duration::from_seconds(3.125), no_interpolation, expected_state, start,
-        end);
+        end, period, joint_limits);
       ASSERT_EQ((--traj.end()), start);
       ASSERT_EQ(traj.end(), end);
       EXPECT_NEAR(p3.positions[0], expected_state.positions[0], EPS);
